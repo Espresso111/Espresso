@@ -14,8 +14,7 @@ def cal_op(micro_batches, num_stages, stage_id, useNew = False):
     
     pipe_schedule = schedule.TrainSchedule(micro_batches=micro_batches,
                                         stages=num_stages,
-                                        stage_id=stage_id,
-                                        useNew = useNew)
+                                        stage_id=stage_id)
     a = []
     for step_cmds in pipe_schedule:
         # For each instruction in the step

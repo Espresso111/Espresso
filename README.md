@@ -38,16 +38,19 @@ To run Espresso, begin by creating a JSON configuration file for your model. Her
 
 ```json
 {
-    "model_name": "open_llama_3b_v2",
-    "gradient_accumulation_steps": 4,
-    "seq_len": 2000,
-    "model_layer": 26,
-    "global_batch_size": 16,
-    "tp_size": 1,
+    "model_name":"open_llama_3b_v2",
+    "gradient_accumulation_steps":4,
+    "seq_len":3000,
+    "model_layer":26,
+    "global_batch_size":64,
+    "dp_size":1,
+    "tp_size":1,
+    "num_layers": 26,
     "n_head": 32,
     "hidden_dim": 3200,
     "vocab_size": 32000,
-    "slo": 100
+    "max_seq_len": 8000,
+    "slo":100
 }
 ```
 
@@ -71,13 +74,21 @@ After execution, the following `result.json` file is generated in the current di
 ```json
 {
     "model_name": "open_llama_3b_v2",
-    "gpus_permutation": ["a6000-pcie4-48gb", "a6000-pcie4-48gb"],
+    "gpus_permutation": [
+        "a6000-pcie4-48gb",
+        "a6000-pcie4-48gb",
+        "3090-pcie4-24gb"
+    ],
     "tp_size": 1,
-    "pp_size": 2,
+    "pp_size": 3,
     "dp_size": 1,
-    "money_cost": 0.025778257865476474,
-    "time_cost": 7.733477359642942,
-    "layer_distribution": [13, 13],
+    "money_cost": 0.2019491016738102,
+    "time_cost": 50.13908731211839,
+    "layer_distribution": [
+        11,
+        12,
+        3
+    ],
     "success": true
 }
 ```
