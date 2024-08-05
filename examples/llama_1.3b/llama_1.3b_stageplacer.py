@@ -13,17 +13,6 @@ from Espresso.utils import Model,load_gpus_from_config,test_gpu_detail,profile_l
 import json
 
 if __name__ == "__main__":
-
-    # for seqlen in range(1000, 9001, 1000):
-    #     model.seq_len = seqlen
-    #     print(model)  # 确保打印修改后的状态
-    #     min_cost = GPUAllocator.gpu_allocator(model)
-    #     print(f"seqlen = {seqlen} min_cost = {min_cost}")
-
-    # with open("./result.json","w") as f:
-    #     f.write(json.dumps(min_cost))
-
-
     gpus = load_gpus_from_config()
     with open('./llama_1.3b.json', 'r') as f:
         model = Model(**json.load(f))
@@ -47,7 +36,3 @@ if __name__ == "__main__":
         print(f"ans = {BestConfig}") # test
         print()
     
-
-"""
-
-"""
