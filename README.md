@@ -1,6 +1,6 @@
 # Espresso
 
-Espresso is a cost-efficient resource provisioning framework designed to streamline heterogeneous GPU allocation (GPU Allocator) and optimal stage placement (Stage Placer) for large model training in the cloud.
+Espresso is a cost-efficient resource provisioning framework that unifies the heterogeneous GPU allocation(GPU allocator) and adequate stage placement (stage placer) for large model training in the cloud. 
 
 ## Overview
 
