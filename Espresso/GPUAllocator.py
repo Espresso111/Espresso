@@ -92,7 +92,7 @@ def callMapper(gpu_config,model,slo,pp_size,beta=0.8,model_config=None):
 def getModelTotalFLOPs(model):
     return 72 * model.global_batch_size * model.model_layer * model.seq_len * model.hidden_dim * model.hidden_dim * (1 + model.seq_len / (6 * model.hidden_dim)+ model.vocab_size / (12 * model.hidden_dim * model.model_layer))
 
-def minCostEstimator(model,gpu_config,slo,pp_size,beta=0.8,model_config=None):
+def minCostEstimator(model,gpu_config,slo,pp_size,minMem,beta=0.8,model_config=None):
     if gpu_config == None or len(gpu_config) == 0: return inf,inf
     tmp = model.model_layer
     if beta != -1:
@@ -102,7 +102,7 @@ def minCostEstimator(model,gpu_config,slo,pp_size,beta=0.8,model_config=None):
     r = 0
     for x in gpu_config:
         moneyCost += x.cost
-        r += x.peak_fp16_TFLOPS
+        r += x.peak_fp16_TFLOPS * model.dp_size
     moneyCost /= 3600
     total_flop = getModelTotalFLOPs(model) / 10**12
     Mb = model.gradient_accumulation_steps
@@ -111,9 +111,13 @@ def minCostEstimator(model,gpu_config,slo,pp_size,beta=0.8,model_config=None):
     Tmin = total_flop/(p * r)
     model.model_layer = tmp
     
+    memCost = sum([x.mem_per_GPU_in_GB*model.dp_size for x in gpu_config])
+    if memCost < minMem:
+        return inf, inf
+
     if Tmin < slo:
         return Tmin * moneyCost, Tmin
-    else: return inf, inf
+    else: return inf, Tmin
 
 def checkLimit(gpu_config,gpus,model):
     for i in range(len(gpus)):
@@ -134,12 +138,12 @@ def getRapidConfig(model,gpu_config,gpus,slo,pp_size,idx,model_config):
             ans_config = copy.deepcopy(cur_cost_config)
     return ans_config
 
-def getMinCostRapidConfig(model,gpu_config,gpus,slo,pp_size,idx,model_config=None):
+def getMinCostRapidConfig(model,gpu_config,gpus,slo,pp_size,minMem,idx,model_config=None):
     min_cost = inf
     for i in range(idx,len(gpus)):
         cur_gpu_config = copy.deepcopy(gpu_config)
-        cur_gpu_config.extend([gpus[i] for _ in range(pp_size - len(gpus))])
-        cur_cost, _ = minCostEstimator(model,cur_gpu_config,slo,pp_size,-1,model_config)
+        cur_gpu_config.extend([gpus[i] for _ in range(pp_size - len(cur_gpu_config))])
+        cur_cost, _ = minCostEstimator(model,cur_gpu_config,slo,pp_size,minMem,-1,model_config)
         if min_cost > cur_cost:
             min_cost = cur_cost
     return min_cost
@@ -182,6 +186,7 @@ def getKUpper(gpus,model,model_config=None):
     if ans == 0: ans = 8
     return ans
 
+
 def getKLower(gpus,model,model_config=None):
     for k in range(1,9):
         for gpu in gpus:
@@ -212,6 +217,37 @@ def getKLower(gpus,model,model_config=None):
                 return k
     return 9
 
+def getModelLeastMem(model,pp_size,gpu,model_config=None):
+    gpu_permutation = [gpu.name for _ in range(pp_size)]
+    gpu_layer_distribution = [model.model_layer // pp_size for _ in range(pp_size)]
+    res_layer = model.model_layer - sum(gpu_layer_distribution)
+    for idx in range(res_layer):
+        gpu_layer_distribution[idx] += 1
+    stages_config = ";".join(str(num) for num in gpu_layer_distribution)
+    gpus_config = ";".join(x for x in gpu_permutation)
+    flag, calculated_latency,breakdownInfo = llm_analysis.portal.train(
+        model_name=model.model_name,
+        partitions=stages_config,
+        gpu_name=gpus_config,
+        tp_size=model.tp_size,
+        pp_size=pp_size,
+        dp_size=model.dp_size,
+        sp_size=1,
+        gradient_accumulation_steps=model.gradient_accumulation_steps,
+        batch_size=model.global_batch_size // (model.dp_size * model.gradient_accumulation_steps),
+        seq_len=model.seq_len,
+        activation_recomputation=2,
+        output_dir="./testData",
+        model_config=model_config,
+        breakdown=True
+    )
+    memory = 0
+    # print(breakdownInfo)
+    for idx in range(pp_size):
+        memory += breakdownInfo[str(idx)]['mem']
+    memory /= (1024 ** 3)
+    return memory
+
 limit = [16,8,16,16,0]
 def gpu_allocator(model,beta=0.8,model_config=None):
     slo = model.slo
@@ -232,6 +268,8 @@ def gpu_allocator(model,beta=0.8,model_config=None):
             if tmp_config['money_cost'] < min_config['money_cost']:
                 min_config = copy.deepcopy(tmp_config)
             priority_queue = [ResourcePlan(0,[],{"money_cost":inf},0,-1)]
+            if test_overhead or testBP or testCP: minMem = int(1e10) #TCP
+            else: minMem = getModelLeastMem(model,pp_size,gpus[0],model_config=model_config)
             while priority_queue:
                 topv = heapq.heappop(priority_queue)
                 gpu_config = topv.gpu_config
@@ -246,23 +284,19 @@ def gpu_allocator(model,beta=0.8,model_config=None):
                 if idx >= len(gpus): continue
                 if stage_idx >= pp_size: continue
                 if len(gpu_config) > 0:
-                    curCost, tmin = minCostEstimator(model,gpu_config,slo,pp_size,beta,model_config)
-                    # cost prune
-                    if curCost > min_config['money_cost']:
+                    curCost, tmin = minCostEstimator(model,gpu_config,slo,pp_size,minMem,beta,model_config)
+                    if curCost > min_config['money_cost']:# CP
                         continue
-                    # time prune
-                    if tmin > slo:
+                    if tmin > slo: # TCP
                         continue
 
                 for num in range(0,min(limit[idx+1]//dp_size,pp_size - len(gpu_config))+1):
                     cur_gpu_config = copy.deepcopy(gpu_config)
                     cur_gpu_config.extend([gpus[idx+1] for _ in range(num)])
-                    # cur_cost_config = getRapidConfig(model,cur_gpu_config,gpus,slo,pp_size,idx+2,model_config)
-                    # cur_cost_config = getRapidConfig(model,cur_gpu_config,gpus,slo,pp_size,idx+2,model_config)
-                    # heapq.heappush(priority_queue, ResourcePlan(cur_cost_config['money_cost'],cur_gpu_config,cur_cost_config,stage_idx+num,idx+1))
-                    tmp_cost = getMinCostRapidConfig(model,cur_gpu_config,gpus,slo,pp_size,idx,model_config)
+                    tmp_cost = getMinCostRapidConfig(model,cur_gpu_config,gpus,slo,pp_size,minMem,idx,model_config)
+                    if tmp_cost >= inf: #TCP
+                        continue
                     heapq.heappush(priority_queue, ResourcePlan(tmp_cost,cur_gpu_config,{},stage_idx+num,idx+1))
-    # print("!!!!")
     return min_config
 
 import time

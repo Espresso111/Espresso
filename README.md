@@ -4,7 +4,7 @@ Espresso is a cost-efficient resource provisioning framework designed to streaml
 
 ## Overview
 
-Espresso integrates four main modules: Espresso Profiler, GPU Allocator, Stage Placer, and Performance Estimator. Users begin by submitting training jobs via the Espresso Profiler, which collects data on the model, Service Level Objectives (SLO), and dataset. The Profiler then assesses execution time and memory overhead for various model layers across different GPU types. This data is used by the GPU Allocator to devise cost-effective GPU allocation strategies in heterogeneous environments. The Stage Placer, with input from the Performance Estimator, then generates a stage placement plan to predict and optimize training time. This comprehensive plan is executed seamlessly in the cloud environment.
+Espresso integrates four main modules: Espresso Profiler, GPU Allocator, Stage Placer, and Performance Estimator. Users first submit training jobs to the Espresso Profiler, which includes a large model, datasets, SLOs, and training epochs. The Profiler analyzes the training iteration time and GPU memory consumption of different layers on heterogeneous GPUs. Leveraging the profiled job statistics above, the GPU Allocator then employs a cost tree-based provisioning strategy to generate a cost-efficient GPU allocation plan. It further utilizes a resource-aware stage placement strategy in Stage Placer to adequately partition model layers into stages and place them on the provisioned heterogeneous GPUs, aiming to minimize the model training time. Finally, the training job is deployed with the cost-efficient GPU allocation plan and stage placement plan in the cloud.
 ![Architecture](images/architecture.png)
 
 

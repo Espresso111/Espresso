@@ -131,9 +131,7 @@ def StageGPUmapper(
                         GPUList.append([GPULoadTable[x][0]-valid_layer,comm_layer,GPULoadTable[x][stage_idx + 1],x]) # sortedkey,layer,GPUname
             # GPUList
             GPUList = sorted(GPUList,key=lambda x: x[0])
-            # print(f"GPUList = {GPUList}")
             if len(GPUList) == 0: 
-                # print(f"!!!!! stage_idx = {stage_idx}")
                 flag = False
                 break
             _,cur_comm_layer,cur_mem_layer,GPUname = GPUList[0]
@@ -149,8 +147,6 @@ def StageGPUmapper(
         
         if not flag:
             break
-        # tmpStrategy
-        # balance
         res_layer = model.model_layer
         layer_distribution = [min(x) for x in partition_table]
         layer_distribution[0] = partition_table[0][0]
@@ -167,7 +163,6 @@ def StageGPUmapper(
             res_layer -= 1
         
         tmpStrategy = [[gpus_permutation[x],layer_distribution[x]] for x in range(pp_size)]
-        # print(f"!!! layer = {layer} tmpStrategy= {tmpStrategy}")
         curTimeCost = estimater(model,tmpStrategy,model_config=model_config)
         if curTimeCost < timeCost:
             timeCost = curTimeCost
@@ -178,12 +173,12 @@ def StageGPUmapper(
 
 if __name__ == "__main__":
     gpus = load_gpus_from_config()
-    modelname = "llama_3b"
+    modelname = "llama_1.3b"
     model = load_model_from_config(f'./model_config/{modelname}.json')
     model.dp_size = 2
     print(f"mainmodel = {model}")
     # 2 3 0 1
-    gpu_config = [gpus[0],gpus[3],gpus[1],gpus[3]]
+    gpu_config = [gpus[0],gpus[2],gpus[3]]
     test_gpu_detail(
         model=model,
         gpus=gpus,
